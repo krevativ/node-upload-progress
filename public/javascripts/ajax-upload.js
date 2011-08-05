@@ -13,7 +13,7 @@
         self.options = $.extend({
           iframeName:       'progressFrame',
           uidLength:        16,
-          pollingFrequency: 2000
+          pollingFrequency: 500
         }, options);
 
         createIframe(self);
@@ -37,7 +37,8 @@
 
         $(document).bind('upload:complete', function( event, data ){
           window.clearTimeout(self.timeout);
-          self[0].action.replace('?uid='+self.uid, '');
+          var uri = self[0].action.toString();
+          self[0].action = uri.slice(0, uri.indexOf("?"));
           self.uid = self.timeout = null;
 
           self.append('<p id="uploaded"><a href="'+data.path+'">Uploaded to here.</a></p>');
@@ -54,7 +55,7 @@
   function createIframe( element ) {
     $(document.body).append($('<iframe name="'+element.options.iframeName+'" style="width:0;height:0;position:absolute;top:-999px"></iframe>'));
     element.attr('target', element.options.iframeName);
-  };
+  }
 
   function generateUID( element ) {
     var result = "",
@@ -62,9 +63,9 @@
 
     for (var i = 0; i < element.options.uidLength; i++) {
       result += chars.charAt(Math.floor(Math.random() * chars.length));
-    };
-
-    return element.uid = result;
+    }
+	element.uid = result;
+    return element.uid;
   }
 
   function pollUpload( element ) {

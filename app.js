@@ -59,7 +59,16 @@ app.get('/uploads/:uid', function( req, res ){
       res.write(JSON.stringify({ progress: buf.toString() }));
       res.end();
     } else {
-      res.send('Not Found', { 'Content-Type': 'text/plain' }, 404);
+      writeSession(req, 'progress', '0');
+      readSession(req, 'progress', function( err, buf ){
+        if ( buf ) {
+          res.writeHead(200, {'Content-Type': 'application/json'});
+          res.write(JSON.stringify({ progress: buf.toString() }));
+          res.end();
+        } else {
+          res.send('Not Found', { 'Content-Type': 'text/plain' }, 404);
+        }
+      });
     }
   });
 });
@@ -79,9 +88,14 @@ function uploadFile( req, res ) {
         form.encoding = 'utf-8';
         form.keepExtensions = true; //keep extensions
         form.maxFieldsSize = 0.5 * 1024 * 1024; //max memory allocated of a field in bytes
-
+        
+        /*
         form.on('field', function(name, value) {
             util.debug('received field: ' + name + ' = ' + value);
+        });
+
+        form.on('fileBegin', function(name, file) {
+            util.debug('fileBegin');
         });
 
         form.on('error', function(err) {
@@ -89,8 +103,8 @@ function uploadFile( req, res ) {
         });
         form.on('end', function() {
             util.debug('stream end.');
-            writeSession(req, 'progress', '100');
         });
+        */
 
         //handle every part
         form.onPart = function(part) {
@@ -107,12 +121,6 @@ function uploadFile( req, res ) {
             fileStream.addListener("drain", function() {
               req.resume();
             });
-
-            console.log('PATHNAME ' + part.filename);
-            util.debug('getting new part...');
-
-            util.debug('form bytes received: ' + form.bytesReceived);
-            util.debug('form bytes expected: ' + form.bytesExpected);
 
             //handle chunks of files
             part.on('data', function(chunk) {
