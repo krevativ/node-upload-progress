@@ -5,10 +5,10 @@
 require.paths.unshift(__dirname + '/vendor/');
 
 var express   = require('express'),
-    multipart = require('multipart'),
     keys      = require('keys'),
-    sys       = require('sys'),
-    fs        = require('fs');
+    fs        = require('fs'),
+    formidable = require('formidable');
+    var util = require('util');
 
 var app = module.exports = express.createServer();
 app.store = new keys.Memory();
@@ -67,69 +67,83 @@ app.get('/uploads/:uid', function( req, res ){
 // Upload
 
 function uploadFile( req, res ) {
-  req.setEncoding('binary');
-  var stream        = parseMultipart(req),
-      bytesTotal    = req.headers['content-length'],
-      bytesReceived = 0,
-      fileName      = null,
-      fileStream    = null;
+        util.debug('this is a form request');
 
-  stream.onPartBegin = function( part ) {
-    var dirName = createUploadDirectory(req);
+        //setup this form receiver
+        var form = new formidable.IncomingForm();
+        var bytesTotal  = req.headers['content-length'],
+            bytesReceived = 0,
+            fileName      = null,
+            fileStream    = null;
 
-    // Forcing the file basename, because IE sends the full file system path
-    fileName    = part.filename.split(/\\/).reverse()[0]
-    fileName    = dirName + '/' + fileName;
-    fileStream  = fs.createWriteStream(fileName);
-    writeSession(req, 'path', fileName.replace('./public', ''));
+        form.encoding = 'utf-8';
+        form.keepExtensions = true; //keep extensions
+        form.maxFieldsSize = 0.5 * 1024 * 1024; //max memory allocated of a field in bytes
 
-    fileStream.addListener("error", function(err) {
-      sys.debug(err);
-    });
+        form.on('field', function(name, value) {
+            util.debug('received field: ' + name + ' = ' + value);
+        });
 
-    fileStream.addListener("drain", function() {
-      req.resume();
-    });
-  };
+        form.on('error', function(err) {
+            util.debug('error: ' + err);
+        });
+        form.on('end', function() {
+            util.debug('stream end.');
+            writeSession(req, 'progress', '100');
+        });
 
-  stream.onData = function( chunk ) {
-    req.pause();
+        //handle every part
+        form.onPart = function(part) {
+            var dirName = createUploadDirectory(req);
+            fileName    = part.filename.split(/\\/).reverse()[0];
+            fileName    = dirName + '/' + fileName;
+            fileStream  = fs.createWriteStream(fileName);
+            writeSession(req, 'path', fileName.replace('./public', ''));
 
-    fileStream.write(chunk, 'binary');
-    bytesReceived += chunk.length;
+            fileStream.addListener("error", function(err) {
+              util.debug(err);
+            });
 
-    var progress = Math.round( (bytesReceived / bytesTotal * 100) ).toString();
-    writeSession(req, 'progress', progress);
-    // sys.debug(progress + '%');
-  };
+            fileStream.addListener("drain", function() {
+              req.resume();
+            });
 
-  stream.onEnd = function() {
-    fileStream.end();
-    req.resume();
-    writeSession(req, 'progress', '100');
-    uploadComplete(req, res);
-  };
-}
+            console.log('PATHNAME ' + part.filename);
+            util.debug('getting new part...');
 
-function parseMultipart( req ) {
-  var parser = multipart.parser();
-  parser.headers = req.headers;
+            util.debug('form bytes received: ' + form.bytesReceived);
+            util.debug('form bytes expected: ' + form.bytesExpected);
 
-  req.addListener("data", function( chunk ) {
-    parser.write(chunk);
-  });
+            //handle chunks of files
+            part.on('data', function(chunk) {
+                //util.debug('received / expected: ' + form.bytesReceived + ' / ' + form.bytesExpected + ' (after chunk, size: ' + chunk.length);
+                req.pause();
 
-  req.addListener("end", function( ) {
-    parser.close();
-  });
+                fileStream.write(chunk, 'binary');
+                bytesReceived += chunk.length;
 
-  return parser;
+                var progress = Math.round( (bytesReceived / bytesTotal * 100) ).toString();
+                writeSession(req, 'progress', progress);
+            });
+
+            //handle part end
+            part.on('end', function() {
+                util.debug('part end.');
+                fileStream.end();
+                req.resume();
+                writeSession(req, 'progress', '100');
+                uploadComplete(req, res);
+            });
+            //form.handlePart(part);
+        };
+
+        //start parsing this stream
+        form.parse(req);
 }
 
 function createUploadDirectory( req ) {
   var uid      = req.param('uid'),
       dirName  = "./public/songs/" + uid;
-
   req.pause();
   fs.mkdir(dirName, '744', function( ) { req.resume(); });
 
