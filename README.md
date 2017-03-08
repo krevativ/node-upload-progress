@@ -13,5 +13,3 @@
 ## Supported browsers
 Google Chrome, Firefox, Opera, Safari and IE6+
 
-## Copyright
-&copy; 2011 Valeri Kremer www.krevativ.com
